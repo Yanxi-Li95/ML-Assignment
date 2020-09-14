@@ -1,0 +1,46 @@
+---
+title: "yli130_Assignment1"
+author: "Yanxi Li"
+date: "9/11/2020"
+output: html_document
+---
+# ****** Part 1 ******  Import data
+
+```{r}
+getwd()
+setwd("C:\\Users\\yanxi\\Onedrive\\Desktop")
+data <- read.csv("WestRoxbury.csv")
+```
+
+# ****** Part 2 ******  Identify variables
+
+```{r}
+head(data)
+class(data$REMODEL)
+class(data$TAX)
+typeof(data$TOTAL.VALUE)
+max(data$TOTAL.VALUE)
+str(data)
+summary(data)
+```
+
+# ****** Part 3 ******  Transform
+
+```{r}
+class(data$TAX)
+tail(as.character(data$TAX),10)
+head(data$HALF.BATH)
+head(as.logical(data$HALF.BATH))
+```
+
+# ****** Part 4 ******  Plot 
+
+```{r}
+library(ggplot2)
+qplot(data=data, x=LIVING.AREA, color=I("black"), geom="histogram", binwidth=50)
+qplot(data=data, x=GROSS.AREA, y=TOTAL.VALUE, color=ROOMS, size=I(1), shape=I(15), main="TOTAL.VALUE & GROSS.AREA")
+```
+
+# THE END
+
+
