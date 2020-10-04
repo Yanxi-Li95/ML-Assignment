@@ -1,0 +1,280 @@
+---
+title: "Assignment2_yli130"
+author: "Yanxi Li"
+date: "10/2/2020"
+output: html_document
+---
+
+***
+# The process how to classify the customer :
+ 1 : import data and the related library.
+ 2 : convert correct format to the data.
+ 3 : split data into 60% Training and 40% Validation sets.
+ 4 : normalize the data.
+ 5 : evaluate the model (confusion matrix).
+ 6 : predict the new customer with the model.
+
+***
+
+#   Step 1 : Import data  
+```{r}
+getwd()
+setwd("C:\\Users\\yanxi\\OneDrive\\Desktop\\")   
+bank_data <- read.csv("UniversalBank.csv")
+my_bank_data <- bank_data[,-c(1,5)]   # remove ID & ZIPCODE columns
+colnames(my_bank_data)
+summary(my_bank_data)
+head(my_bank_data)
+str(my_bank_data)
+library(caret)
+library(class)
+library(gmodels)
+```
+
+***
+
+#   Step 2 : Convert correct format 
+some data format is not correct, we have to convert them first.
+```{r}
+my_bank_data$Family <- factor(my_bank_data$Family)      #convert to factor
+my_bank_data$Education <- factor(my_bank_data$Education)
+my_bank_data$Securities.Account <- factor(my_bank_data$Securities.Account)
+my_bank_data$CD.Account <- factor(my_bank_data$CD.Account)
+my_bank_data$Online <- factor(my_bank_data$Online)
+my_bank_data$CreditCard <- factor(my_bank_data$CreditCard)
+my_bank_data$Personal.Loan <- factor(my_bank_data$Personal.Loan)   
+dummy_model <- dummyVars(~Education, data=my_bank_data)
+head(predict(dummy_model, my_bank_data))
+dummy_model2 <- dummyVars(~Family, data = my_bank_data)
+head(predict(dummy_model2, my_bank_data))
+summary(my_bank_data)
+```
+
+***
+
+#   Step 3 : Split data : 60% training & 40% validation 
+```{r}
+set.seed(123)
+Train_index <- createDataPartition(my_bank_data$Age, p=0.6, list=FALSE)  # take 60% for training sets
+Train_data <- my_bank_data[Train_index,]
+Validation_data <- my_bank_data[-Train_index,]   # validation data is the rest
+
+```
+
+***
+
+#   Step 4 : Normalization 
+```{r}
+# copy the data 
+Train_data_norm <- Train_data
+Validation_data_norm <- Validation_data
+# use preProcess() from caret to z normalize Age[,1], Experience[,2], Income[,3], CCAvg[,5], Mortgage[,7]
+z.norm <- preProcess(Train_data[,c(1:3,5,7)], method=c("center", "scale"))  # use z normalize
+Train_data_norm[,c(1:3,5,7)] <- predict(z.norm, Train_data[,c(1:3,5,7)])  # replace 1,2,3,5,7 column with normalized values
+Validation_data_norm[,c(1:3,5,7)] <- predict(z.norm, Validation_data[,c(1:3,5,7)])
+summary(Train_data_norm[,c(1:3,5,7)])   # Train_data_norm : mean=0, variance=1
+var(Train_data_norm[,c(1:3,5,7)])
+summary(Validation_data_norm[,c(1:3,5,7)])    
+var(Validation_data_norm[,c(1:3,5,7)])
+```
+
+***
+
+#   Step 5 : Model Evaluation : using k = 1  
+```{r}
+knn.pred.1 <- knn(Train_data_norm[,-8], Validation_data_norm[,-8],  # 8 column is personal loan 
+                cl = Train_data_norm[,8], k=1)      # use k = 1
+#Model Evaluation
+Validation_data_norm[,8] = data.frame(Validation_data_norm[,8])
+outcome.comparison.1 <- data.frame(knn.pred.1, Validation_data_norm[,8])
+names(outcome.comparison.1) <- c("Predicted", "Observed")
+head(outcome.comparison.1)
+
+#confusion matrix
+CrossTable(x = outcome.comparison.1$Observed, y = outcome.comparison.1$Predicted, prop.chisq = FALSE) 
+
+```
+
+Accuracy = 0.959 and the total misclassification is 66 + 16 = 82. 
+
+***
+
+##  Step 6 : classify new customer with the model when k = 1
+```{r}
+mytest <- Train_data_norm[1,-8]   #create format for the test sample
+mytest[1,] <- c(40,10,84,2,2,2,0,0,0,1,1)  #input the sample data
+mytest_norm <- mytest
+mytest_norm[,c(1:3,5,7)] <- predict(z.norm, mytest[,c(1:3,5,7)])  # normalize the sample data
+mytest_norm
+
+knn.test.pred.1 <- knn(Train_data_norm[,-8], mytest_norm,
+                     cl = Train_data_norm[,8], k=1, prob = TRUE)  
+knn.test.pred.1   
+
+```
+The outcome shows "0" which means this customer cannot accept the personal loan.
+
+***
+
+##  Choice of k that balances between overfitting and ingorining predictor info.
+If k is too small, the model may overfit and some data like outliers and noise can affect the prediction.
+If k is too large, some of the neighbors maybe not relevant to the prediction and it can cause underfit which means ignore predictor information.
+So finding the optimal k value is important.
+
+***
+
+#   Find best k 
+To determine the best k, we use the performance on the normalized validation set.
+We vary the value of k from 1 to 15.
+
+```{r}
+accuracy.df <- data.frame(k = seq(1,15,1), accuracy = rep(0,15)) 
+#compute knn for different k on validation
+for(i in 1:15){
+  k_pred <- knn(Train_data_norm[,-8], Validation_data_norm[,-8],
+                  cl = Train_data_norm[,8], k=i)
+  accuracy.df[i,2] <- confusionMatrix(k_pred, Validation_data_norm[,8])$overall[1]
+}
+accuracy.df   # both k=1&3 got the highest accuracy.
+plot(accuracy.df)    
+```
+Both k=1 and k=3 get the highest accuracy, in case of the overfit(k is too small), I choose k = 3.
+
+***
+
+#   Confusion matrix for k=3
+Here i use the best k value which is 3.
+
+```{r}
+knn.pred.2 <- knn(Train_data_norm[,-8], Validation_data_norm[,-8],  # 8 column is personal loan 
+                cl = Train_data_norm[,8], k=3)
+
+Validation_data_norm[,8] = data.frame(Validation_data_norm[,8])
+outcome.comparison.2 <- data.frame(knn.pred.2, Validation_data_norm[,8])  # put the predicted and observed data into data.frame
+names(outcome.comparison.2) <- c("Predicted", "Observed")
+head(outcome.comparison.2)
+
+#confusion matrix
+CrossTable(x = outcome.comparison.2$Observed, y = outcome.comparison.2$Predicted, prop.chisq = FALSE)    
+
+```
+A total of 77 + 5 = 82 misclassification cases.
+
+Different error types K = 3:
+False positive : 5
+False negative : 77
+Total number   : 1999
+Accuracy = (1795 + 122) / 1999 = 0.959
+
+***
+
+##   Classify new customer with the model when k = 3
+```{r}
+mytest <- Train_data_norm[1,-8]   #create format for the test sample
+mytest[1,] <- c(40,10,84,2,2,2,0,0,0,1,1)  #input the sample data
+mytest_norm <- mytest
+mytest_norm[,c(1:3,5,7)] <- predict(z.norm, mytest[,c(1:3,5,7)])  # nomralize the sample data
+mytest_norm
+
+knn.test.pred.2 <- knn(Train_data_norm[,-8], mytest_norm,
+                     cl = Train_data_norm[,8], k=3, prob = TRUE)
+knn.test.pred.2    
+
+```
+The outcome shows "0" which means this customer cannot accept the personal loan.
+
+***
+
+##   Repartition data into Train 50%, Validation 30% and Test 20%
+
+```{r}
+set.seed(123)
+Test_index = createDataPartition(my_bank_data$Age, p=0.2, list=FALSE)  # 20% reserved for test
+Test_data = my_bank_data[Test_index,]
+TraVal_data = my_bank_data[-Test_index,] # Training and validation is rest
+Train_index_new = createDataPartition(TraVal_data$Age, p=0.625, list=FALSE) # 75% of remaining is training 
+Train_data_new = TraVal_data[Train_index_new,]
+Validation_data_new = TraVal_data[-Train_index_new,]   # the rest is validation
+summary(Train_data_new)
+summary(Validation_data_new)
+summary(Test_data)
+
+```
+
+***
+
+##   Normalize the new partition data
+```{r}
+#copy the data 
+Train_data_norm_new <- Train_data_new
+Validation_data_norm_new <- Validation_data_new
+Test_data_norm <- Test_data
+#z normalize the data
+z.norm.new <- preProcess(Train_data_new[,c(1:3,5,7)], method=c("center", "scale"))
+Train_data_norm_new[,c(1:3,5,7)] <- predict(z.norm.new, Train_data_new[,c(1:3,5,7)])   
+Validation_data_norm_new[,c(1:3,5,7)] <- predict(z.norm.new, Validation_data_new[,c(1:3,5,7)])
+Test_data_norm[,c(1:3,5,7)] <- predict(z.norm.new, Test_data[,c(1:3,5,7)])
+summary(Train_data_norm_new)
+var(Train_data_norm_new[,c(1:3,5,7)])
+summary(Validation_data_norm_new)
+var(Validation_data_norm_new[,c(1:3,5,7)])
+summary(Test_data_norm)
+var(Test_data_norm[,c(1:3,5,7)])
+
+```
+
+***
+
+##   Compare confusion matrix 
+compare the confusion matrix of the test set with the training and validation sets.
+1. test with train
+2. test with validation
+```{r}
+# 1. Test with Train
+knn.pred.new1 <- knn(Train_data_norm_new[,-8],Test_data_norm[,-8],  # 8 column is personal loan 
+                cl = Train_data_norm_new[,8], k=3)
+
+# model Evaluation
+Test_data_norm[,8] = data.frame(Test_data_norm[,8])
+Test_with_Train <- data.frame(knn.pred.new1, Test_data_norm[,8])
+names(Test_with_Train) <- c("Predicted", "Observed")
+head(Test_with_Train)
+#confusion matrix
+CrossTable(x = Test_with_Train$Observed, y = Test_with_Train$Predicted, prop.chisq = FALSE)
+
+
+# 2. Test with Validation
+knn.pred.new2 <- knn(Validation_data_norm_new[,-8],Test_data_norm[,-8],  # 8 column is personal loan 
+                cl = Validation_data_norm_new[,8], k=3)
+
+# model Evaluation
+Test_data_norm[,8] = data.frame(Test_data_norm[,8])
+Test_with_Validation <- data.frame(knn.pred.new2, Test_data_norm[,8])
+names(Test_with_Validation) <- c("Predicted", "Observed")
+head(Test_with_Validation)
+#confusion matrix
+CrossTable(x = Test_with_Validation$Observed, y = Test_with_Validation$Predicted, prop.chisq = FALSE)
+
+```
+Comment :
+1. Test with Train : True positive = 56
+                     True negative = 911
+                     Accuracy = (56 + 911) / 1001 = 0.966
+2. Test with Validation : True positive = 54
+                          True negative = 909
+                          Accuracy = (54 + 909) / 1001 = 0.962
+The accuracy for test with train is higher than test with validation. 
+Reason : We use training set to normalize validation and test sets. So when we predict the test set with train data, the accuracy is higher than the predicted test set using the validation set.
+
+*** 
+
+## End
+
+
+ 
+
+
+
+
+
+
