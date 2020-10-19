@@ -1,0 +1,104 @@
+---
+title: "yli130 Assignment_3"
+author: "Yanxi Li"
+date: "10/16/2020"
+output: html_document
+---
+
+### NaiveBayes Assignment
+
+***
+
+### Data Preparation
+Use only 5 categorical variables for the predictor variable. 
+Transform DAY_WEEK, DEP_TIME and Flight.Status into factors.
+Round DEP_TIME and label Flight.Status into 0 = on time, 1 = delayed.
+```{r}
+data <- read.csv("FlightDelays.csv") # import data from desktop
+head(data)
+library(dplyr)
+colnames(data)
+my_data <- select(data, CARRIER, DEP_TIME, DEST, ORIGIN, DAY_WEEK, Flight.Status)    # choose 5 categorical variables
+head(my_data)
+str(my_data)     
+my_data$DAY_WEEK <- factor(my_data$DAY_WEEK)   # transform day_week into factors
+my_data$DEP_TIME <- round((my_data$DEP_TIME)/100)   # round departure time 
+my_data$DEP_TIME <- factor(my_data$DEP_TIME)  # transform dep_time into factors
+my_data$Flight.Status <- factor(my_data$Flight.Status,   
+                                levels = c("ontime", "delayed"),
+                                labels = c(0, 1))   # transform flight.status into factor and label it
+str(my_data)
+```
+
+***
+
+### Divide into 60% train and 40% validation 
+We do not need to normalize the categories because they are not numerical.
+```{r}
+library(caret)
+set.seed(123)
+Index_train <- createDataPartition(my_data$CARRIER, p=0.6, list = FALSE)  # Train data is 60%
+Train_data <- my_data[Index_train,]   
+Validation_data <- my_data[-Index_train,]   # Validation data is rest (40%)
+```
+
+***
+
+### Use Naivebayes model to predict
+Use library e1071 or naivebayes to predict whether the flight is delayed or not.
+```{r}
+library(e1071)
+# build a naivebayes classfier
+model <- naiveBayes(Flight.Status ~., data = Train_data)
+Predict_validation_data <- predict(model, Validation_data)
+head(Predict_validation_data)
+Predict_validation_data_prob <- predict(model, Validation_data, type = "raw")
+head(Predict_validation_data_prob)
+```
+
+***
+
+### Counts table & Proportion table
+```{r}
+# counts table 
+mytable <- table(my_data$Flight.Status, my_data$ORIGIN)  # row is flight status and column is destiantion airport
+mytable
+# proportion table   
+prop.table(mytable, 2)   # 2 means calculate the column percentages
+```
+
+***
+
+### Confusion matrix & ROC Curve
+```{r}
+library(gmodels)
+CrossTable(x = Validation_data$Flight.Status, y = Predict_validation_data, prop.chisq = FALSE)  # Accuracy = 0.827
+library(pROC)
+roc(Validation_data$Flight.Status, Predict_validation_data_prob[,1])    # AUC(area under the curve) value
+plot.roc(Validation_data$Flight.Status, Predict_validation_data_prob[,1])
+```
+
+
+***
+
+### END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
