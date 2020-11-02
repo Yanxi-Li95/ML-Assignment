@@ -1,0 +1,250 @@
+---
+title: "yli130_4"
+author: "Yanxi Li"
+date: "10/28/2020"
+output: html_document
+---
+
+### K means clustering Assignment
+
+### Data Preparation
+
+At this part, we plan to first view some basic information related to the raw data and remove the missing measurements from the data set.
+But we found the number of raw data row is 1302, after remove the missing data, it only left with 471 rows with means there are many data missing.
+
+Since we know that the larger amount of data is better because it can have a better estimate of the data mean & SD, we plan to normalize the data first and then remove the missing ones.
+
+We only normalize the numerical data(continuous measurements), make sure to change others categorical measurements to the appropriate formats.
+
+```{r}
+# import the data
+data <- read.csv("C:/Users/yanxi/OneDrive/Desktop/Machine Learning Assignment/Assignment#4/Universities.csv") 
+# preview the data
+head(data, 3) 
+# rows number of the raw data
+nrow(data) 
+# check the data structure
+str(data)  
+# change public/private into factor
+data$Public..1...Private..2. <- factor(data$Public..1...Private..2.) 
+# view how many data is missing
+colMeans(is.na(data)) 
+# select the categorical measurements
+categori_data <- data[,c(1,2,3)]
+# exclude the first 3 categorical measurements to scale
+data_norm <- scale(data[,-c(1,2,3)])  
+# change the nor data into data frame
+data_norm <- as.data.frame(data_norm)
+# combine the categorical measurements and the normalized continuous measurements together for the following questions 
+data_norm_with_category <- cbind(categori_data, data_norm)
+# preview the combine data frame
+head(data_norm_with_category, 3)
+# Remove the missing measurements from the continuous measurements
+Rem_Mis_data <- data_norm[complete.cases(data_norm),] 
+# check the removing result
+colMeans(is.na(Rem_Mis_data))
+# the number of rows after removing
+nrow(Rem_Mis_data)
+
+# load the libraries for the assignment
+library(tidyverse)  # data manipulation
+library(factoextra)  # clustering algorithm & visualization
+library(dplyr)   # select a subset from data set 
+library(ggplot2) # plot figures
+
+```
+
+***
+
+### K means clustering for continuous measurements
+
+We use 17 continuous measurements to make the different clusters.
+
+We use 2 methods(Elbow Method & Silhouette Method) to determine the number of clusters k. fviz_nbclust() in the factoextra library can be used to find the best k value.
+
+For the Elbow Method, the bend in the plot is generally considered as the appropriate number  of clusters.
+
+For the Silhouette Method, the highest value indicates the appropriate number of clusters.
+
+From the 2 different figures, I choose the optimal k value equals to 3 which means there are 3 clusters to describe the data.
+
+```{r}
+# check the number of continuous measurements
+ncol(Rem_Mis_data) 
+# generate the same random numbers 
+set.seed(123)
+# use the Elbow Method to find the cluster numbers
+fviz_nbclust(Rem_Mis_data, kmeans, method = "wss")  
+# use the Silhouette Method to find the cluster numbers
+fviz_nbclust(Rem_Mis_data, kmeans, method = "silhouette") 
+# choose the cluster number k value = 3 and use kmeans to make the clusters
+k3 <- kmeans(Rem_Mis_data, centers = 3, nstart = 25) # iteration counts is 25
+# Centroids
+k3$centers 
+# size of each cluster
+k3$size 
+# Visualize the 3 clusters
+fviz_cluster(k3, data = Rem_Mis_data) 
+```
+
+***
+
+### Compare summary statistics for each cluster
+
+We cannot describe the centroids data by our eyes since there are 17 continuous variables.
+I plan to do a plot to make the data visualized obviously.
+
+I use the pivot_longer to make the y variables not too redundant because of the 17 continuous measurements.
+
+```{r}
+# name the centroids
+centroid_vari <- k3$centers  
+# transfer centroids to data frame
+centroid_vari <- as.data.frame(centroid_vari) 
+# add cluster to the centroids data frame
+centroid_vari$cluster <- c(1,2,3) 
+# preview the new centroids
+centroid_vari
+# use the pivot_longer to make 17 variables together
+centroid_vari_plot <- centroid_vari %>% select(cluster, X..appli..rec.d, X..appl..accepted, X..new.stud..enrolled, X..new.stud..from.top.10., X..new.stud..from.top.25., X..FT.undergrad, X..PT.undergrad, in.state.tuition, out.of.state.tuition, room, board, add..fees, estim..book.costs, estim..personal.., X..fac..w.PHD, stud..fac..ratio, Graduation.rate) %>% pivot_longer(-cluster, names_to = "variable", values_to = "value")
+# use ggplot to plot the picture
+t <- ggplot(centroid_vari_plot, aes(cluster, value, colour = variable)) + geom_point()
+t + xlab("Cluster") +    # name x axis 
+    ylab("Variables Value") +   # name y axis
+    ggtitle("Each Cluster Analysis") +   # name the figure title
+    theme(axis.title.x = element_text(color="DarkGreen", size=20), # change x axis name's color and size
+          axis.title.y = element_text(color="Darkred", size=20),   # change y axis name's color and size
+          axis.text.x = element_text(size=15),   # change x axis number's size
+          axis.text.y = element_text(size=15),   # change y axis number's size
+          plot.title = element_text(color="DarkBlue", size=25))   # change title's color and size
+```
+
+We can see from the figure above :
+
+Cluster 1 is the Universities with low tuition fee, high number of students enrolled and low number of rooms.
+
+Cluster 2 variables are really close to each other and cannot tell the difference.
+
+Cluster 3 is the Universities with high tuition fee, low number of students enrolled and high number of rooms.
+
+***
+
+### K means clustering for categorical measurements
+
+We use 2 categorical measurements(State and Private/Public) to characterize the different clusters. 
+
+I do the histogram plot use the ggplot to make the outcome obviously.
+
+```{r}
+# Remove the missing data from the variable above
+data.norm.with.category.Rem <- data_norm_with_category[complete.cases(data_norm_with_category),]
+# combine with cluster into the data
+data_total_cluster <- cbind(data.norm.with.category.Rem, cluster = k3$cluster)  
+# preview the data
+head(data_total_cluster, 3)  
+# plot the categorical measurements with clusters
+p <- ggplot(data = data_total_cluster, aes(x = cluster))
+# plot State
+p + geom_histogram(binwidth = 0.2, aes(fill = State), color = "Black")
+# plot Public/Private
+h <- p + geom_histogram(binwidth = 0.2, aes(fill = Public..1...Private..2.), color = "Black")
+h + xlab("Cluster") +     # name x axis 
+    ylab("Public / Private") +   # name y axis
+    ggtitle("Categorical Anlysis") +    # name the figure title
+    theme(axis.title.x = element_text(color="DarkGreen", size=20),  # change x axis name's color and size
+          axis.title.y = element_text(color="Darkred", size=20),    # change y axis name's color and size
+          axis.text.x = element_text(size=15),    # change x axis number's size
+          axis.text.y = element_text(size=15),    # change y axis number's size
+          plot.title = element_text(color="DarkBlue", size=25))     # change title's color and size
+```
+
+I plot the 2 categorical measurements with 3 clusters. The State figure is meaningless because they are all mixed together.
+
+The Public/Private school is absolutely meaningful from the picture :
+
+Cluster 1 is mainly for the Public Universities.
+
+Cluster 2 is the mix of Public and Private Universities. 
+
+Cluster 3 is mainly for the Private Universities.
+
+***
+
+### External Infomation 
+
+As we can see from the Public/Private ~ Cluster figure above, it is not fair to judge a university from they are Private or Public. 
+Although Cluster 1 & 3 are typically Public Universities and Private Universities, respectively, Cluster 2 is the mixed which means the Private Universities in this part can also have relatively lower tuition fee and higher students enrolled. Vise verse, the Public Universities in Cluster 2 can also have higher tuition fee and low students enrolled. 
+
+Besides, the size of each cluster is 46, 276 ans 149. Cluster 2 which is the mixed one of Public and Private, the size of cluster 2 is even larger than the sum of the others. We can see the number of the "mixed standard" universities is not small.
+
+***
+
+### Tufts University
+
+Compute the Euclidean distance from Tufts University to each 3 clusters.
+
+Tufts University's X..PT.undergrad is missing.
+
+```{r} 
+# choose Tufts University's row
+Tufts_Uni <- data_norm_with_category[which(data_norm_with_category$College.Name == "Tufts University"),]
+# check the missing variable
+Tufts_Uni
+# exclude the cluster column in centroids data
+centroid_exclu_cluster <- centroid_vari[,-18]
+# split each cluster variables in centroids data and exclude the missing value in Tufts University
+cluster1 <- centroid_exclu_cluster[1,-7] # 7 is the index for X..PT.undergrad
+cluster2 <- centroid_exclu_cluster[2,-7]
+cluster3 <- centroid_exclu_cluster[3,-7]
+# Remove the categorical measurements and missing variable in Tufts University
+Tufts_Uni_rem <- Tufts_Uni[,-c(1:3,10)]
+# Calculate the Euclidean Distance from Tufts University to each cluster
+cluster1_Tufts <- get_dist(rbind(cluster1, Tufts_Uni_rem), method = "euclidean")
+cluster2_Tufts <- get_dist(rbind(cluster2, Tufts_Uni_rem), method = "euclidean")
+cluster3_Tufts <- get_dist(rbind(cluster3, Tufts_Uni_rem), method = "euclidean")
+# show the distance differences results
+cluster1_Tufts
+cluster2_Tufts
+cluster3_Tufts
+# the closest distance
+min(cluster1_Tufts, cluster2_Tufts, cluster3_Tufts) 
+# choose College.Name & X..PT.undergrad from the raw data not normalized
+x <- data[complete.cases(data),] %>% select(College.Name, X..PT.undergrad)
+# combine the specific data with different clusters
+y <- cbind(x, cluster = data_total_cluster$cluster)
+# choose the Tufts University's cluster which is Cluster 3
+z <- y %>% filter(cluster == 3)
+# calculate the average X..PT.undergrad number from Cluster 3
+round(mean(z$X..PT.undergrad))
+# Replace the missing data with the average number
+data[data$College.Name == "Tufts University", "X..PT.undergrad"] <- round(mean(z$X..PT.undergrad))
+# Check the replace statement
+data %>% filter(College.Name == "Tufts University",)
+```
+
+Tufts University's distance to Cluster 3 is 2.69 which is the closest distance in the 3 clusters. So Tufts University should belong to the Cluster 3. 
+
+After the calculation above, the missing variable which is X..PT.undergrad in Tufts University is 283.
+
+***
+
+The End
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
