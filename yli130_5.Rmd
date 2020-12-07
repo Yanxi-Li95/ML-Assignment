@@ -1,0 +1,318 @@
+---
+title: "yli130_5"
+author: "Yanxi Li"
+date: "11/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### ML Assignment_5
+
+### Data Preparation
+
+Since the missing data is not much, remove the missing data. 
+
+Changing mfr & type 2 categorical variables into factors.
+
+Renaming the names to be clear in figure and changing the name column to row-names.
+
+```{r comment=NA, message=FALSE}
+# load the libraries needed
+library(tidyverse) # data manipulations
+library(cluster) # Agglomerative hierarchical clustering
+library(factoextra) # clustering algorithm & visualization
+library(caret) # split data
+library(ggplot2) # plot the figure
+
+# load the data set
+data_raw <- read.csv("C:/Users/yanxi/OneDrive/Desktop/Machine Learning Assignment/Assignment#5/Cereals.csv")
+# check the missing percentage of every variables
+colMeans(is.na(data_raw))
+# remove the missing rows since the missing percentage is small
+data <- data_raw[complete.cases(data_raw),]
+# resetting data-frame index
+rownames(data) <- 1: nrow(data)
+# check the data structure
+str(data)
+# transfer character variables to factor
+data$mfr <- as.factor(data$mfr)
+data$type <- as.factor(data$type)
+# shorten row-names
+data[2,1] <- "100%_Natural"
+data[4,1] <- "All-Bran_with"
+data[5,1] <- "Apple_Cinnamon"
+data[12,1] <- "Cinnamon_Toast"
+data[19,1] <- "Cracklin'_Oat"
+data[21,1] <- "Crispy_Wheat"
+data[25,1] <- "Frosted_Mini"
+data[26,1] <- "Fruit_&_Fibre"
+data[33,1] <- "Great_Grains"
+data[37,1] <- "Just_Right_Crunc"
+data[38,1] <- "Just_Right_Fruit"
+data[43,1] <- "Muesli_Raisins_D"
+data[44,1] <- "Muesli_Raisins_P"
+data[45,1] <- "Mueslix_Crispy"
+data[46,1] <- "Multi-Grain"
+data[48,1] <- "Nutri-Grain_Al"
+data[49,1] <- "Nutri-grain_Wh"
+data[50,1] <- "Oatmeal_Raisin"
+data[51,1] <- "Post_Nat._R"
+data[62,1] <- "Shred_Wheat_n"
+data[63,1] <- "Shred_Wheat_s"
+data[66,1] <- "Strawberry_Fru"
+data[74,1] <- "Wheaties_Honey"
+data[35,1] <- "Honey_Nut"
+data[55,1] <- "Quaker_Oat"
+data[47,1] <- "Nut&Honey"
+data[34,1] <- "Honey_Graham"
+# set row names to the data column
+row.names(data) <- data[,1]
+# remove the name column
+data <- data[,-1]
+# show first 3 rows of data
+head(data, 3)
+# show the descriptive statistics
+summary(data)
+```
+
+***
+
+### Apply Hierarchical Clustering with Agnes
+
+Use Agnes to compare the clustering from single linkage, complete linkage, average linkage, and Ward.
+
+Agnes() function can also get the agglomerative coefficient. 
+
+We choose the higher coefficient value because the value closer to 1 suggest strong clustering structure.
+```{r comment=NA, message=FALSE}
+# copy the data
+data_norm <- data
+# normalize the numerical variables
+data_norm[,c(3:15)] <- scale(data[,c(3:15)])
+# check the normalized data
+head(data_norm, 3)
+# Compute with Agnes and different linkage methods
+hc_single <- agnes(data_norm, method = "single")
+hc_complete <- agnes(data_norm, method = "complete")
+hc_average <- agnes(data_norm, method = "average")
+hc_ward <- agnes(data_norm, method = "ward")
+# Compare Agglomerative coefficients
+hc_single$ac
+hc_complete$ac
+hc_average$ac
+hc_ward$ac  # the best linkage method which is 0.8993694   
+# plot the dendrogram
+pltree(hc_ward, cex = 0.5, hang = -1, main = "Dendrogram of agnes", xlab = "names")
+```
+
+Since the Ward's Agglomerative coefficient is the highest(0.8993694), I choose the Ward method to plot the dendrogram.
+
+***
+
+### Choose numbers of clusters
+
+I use the Elbow & Silhouette methods like the K-means clustering but changing FUN to "hcut" which means hierarchical clustering.
+
+Since the Elbow method is not obvious, I choose the Silhouette highest point which is 10 to be my cluster numbers.
+
+```{r comment=NA, message=FALSE}
+# use the Elbow Method to find the cluster numbers
+p1 <- fviz_nbclust(data_norm[,c(3:15)], FUN = hcut, method = "wss", k.max = 10) +   #  hcut means hierarchical clustering
+    ggtitle("Elbow Method")
+# use the Silhouette Method to find the cluster numbers
+p2 <- fviz_nbclust(data_norm[,c(3:15)], FUN = hcut, method = "silhouette", k.max = 10) + 
+    ggtitle("Silhouette Method") 
+# display different methods' plots together
+gridExtra::grid.arrange(p1, p2)
+# cut cluster numbers to be 10
+clusters <- cutree(hc_ward, k = 10)
+# show each cluster's size
+table(clusters)
+# use cutree output to add the cluster observations belongs to original data
+data_norm$cluster <- clusters
+# change cluster variable into factor
+data_norm$cluster <- as.factor(data_norm$cluster)
+# show first 3 rows for data frame add cluster
+head(data_norm, 3)
+# visual the 10 clusters
+fviz_cluster(list(data = data_norm[,c(3:15)], cluster = clusters)) +
+  ggtitle("all normalized data clustering")
+```
+
+***
+
+### Cluster Stability
+
+I remove 15% of the data to check the stability. For the rest 85% data, run hierarchical clustering again, and see if the clusters have shifted.
+
+```{r comment=NA, message=FALSE}
+# make sure choose the same data set every time
+set.seed(123)
+# choose 85% data
+Index_partition <- createDataPartition(data$rating, p = 0.85, list = F)
+Partition_data <- data[Index_partition,] # 85% data
+Rest_data <- data[-Index_partition,]  # rest data
+# copy the data
+Partition_data_norm <- Partition_data
+# normalize the 85% data
+Partition_data_norm[,c(3:15)] <- scale(Partition_data[,c(3:15)])
+# show the first 3 rows
+head(Partition_data_norm, 3)
+# Compute with agnes and different linkage methods
+hc_single_partition <- agnes(Partition_data_norm, method = "single")
+hc_complete_partition <- agnes(Partition_data_norm, method = "complete")
+hc_average_partition <- agnes(Partition_data_norm, method = "average")
+hc_ward_partition <- agnes(Partition_data_norm, method = "ward")
+# Compare Agglmerative coefficients
+hc_single_partition$ac
+hc_complete_partition$ac
+hc_average_partition$ac
+hc_ward_partition$ac     # the best linkage method, 0.8857997
+# use the Elbow Method to find the cluster numbers
+p1_partition <- fviz_nbclust(Partition_data_norm[,c(3:15)], FUN = hcut, method = "wss", k.max = 10) +   # hcut means hierarchical clustering
+    ggtitle("Elbow Method")
+# use the Silhouette Method to find the cluster numbers
+p2_partition <- fviz_nbclust(Partition_data_norm[,c(3:15)], FUN = hcut, method = "silhouette", k.max = 10) + 
+    ggtitle("Silhouette Method") 
+# display plots together
+gridExtra::grid.arrange(p1_partition, p2_partition)
+# choose cluster number equals to 10
+clusters_partition <- cutree(hc_ward_partition, k = 10)
+# show every cluster's size
+table(clusters_partition)
+# add cluster to Partition data
+Partition_data_norm$cluster <- clusters_partition
+# change cluster variable into factor
+Partition_data_norm$cluster <- as.factor(Partition_data_norm$cluster)
+# show first 3 rows for data frame add cluster
+head(Partition_data_norm, 3)
+# compare the cluster changing
+rownames(data_norm)[clusters == 1]   # cluster 1 for all data
+rownames(Partition_data_norm)[clusters_partition == 1]   # cluster 1 for 85% split data
+rownames(data_norm)[clusters == 2]   # cluster 2 for all data
+rownames(Partition_data_norm)[clusters_partition == 2]   # cluster 2 for 85% split data
+rownames(data_norm)[clusters == 3]   # cluster 3 for all data
+rownames(Partition_data_norm)[clusters_partition == 3]   # cluster 3 for 85% split data
+rownames(data_norm)[clusters == 4]   # cluster 4 for all data
+rownames(Partition_data_norm)[clusters_partition == 4]   # cluster 4 for 85% split data
+rownames(data_norm)[clusters == 5]   # cluster 5 for all data
+rownames(Partition_data_norm)[clusters_partition == 5]   # cluster 5 for 85% split data
+rownames(data_norm)[clusters == 6]   # cluster 6 for all data
+rownames(Partition_data_norm)[clusters_partition == 6]   # cluster 6 for 85% split data
+rownames(data_norm)[clusters == 7]   # cluster 7 for all data
+rownames(Partition_data_norm)[clusters_partition == 7]   # cluster 7 for 85% split data
+rownames(data_norm)[clusters == 8]   # cluster 8 for all data
+rownames(Partition_data_norm)[clusters_partition == 8]   # cluster 8 for 85% split data
+rownames(data_norm)[clusters == 9]   # cluster 9 for all data
+rownames(Partition_data_norm)[clusters_partition == 9]   # cluster 9 for 85% split data
+rownames(data_norm)[clusters == 10]  # cluster 10 for all data
+rownames(Partition_data_norm)[clusters_partition == 10]  # cluster 10 for 85% split data
+```
+
+After remove 15% of data, run hierarchical clustering again and remove the rest 8 names in 100% data-set, I compare 10 clusters' items.
+
+Cluster 1,2,4,8,9,10 did not change, but Cluster 3,5,6,7 changed a lot. Especially for Cluster 5 & 7, No.5 Cluster changed 7 items and No.7 Cluster changed 10 items. 
+
+I also found use the caret to split 85% data, the actual partition data rows is 66 which means I actually have 90% split data. And remove 10% data is really small which can also caused so many differences in the 2 clusters.
+
+Above all, this cluster's stability is low. 
+
+### Healthy Cereals
+
+Since we want to choose the healthy diet for public schools, the actual value matters. In this case , we do not need to normalize the data.
+
+I run the hierarchical clustering again and also use Elbow & Silhouette method to determine the cluster numbers. They both show 3 is the appropriate numbers of cluster.
+
+I calculate each clusters centers and plot the figure to find the "healthy cereals" cluster.
+
+```{r comment=NA, message=FALSE}
+# Compute with Agnes and different linkage methods
+hc_single_new <- agnes(data, method = "single")
+hc_complete_new <- agnes(data, method = "complete")
+hc_average_new <- agnes(data, method = "average")
+hc_ward_new <- agnes(data, method = "ward")
+# Compare Agglomerative coefficients
+hc_single_new$ac
+hc_complete_new$ac
+hc_average_new$ac
+hc_ward_new$ac       # the best linkage method, 0.959504
+# use the Elbow Method to find the cluster numbers
+p1_new <- fviz_nbclust(data[,c(3:15)], FUN = hcut, method = "wss", k.max = 10) +   #  hcut means hierarchical clustering
+    ggtitle("Elbow Method")
+# use the Silhouette Method to find the cluster numbers
+p2_new <- fviz_nbclust(data[,c(3:15)], FUN = hcut, method = "silhouette", k.max = 10) + 
+    ggtitle("Silhouette Method") 
+# display plots together
+gridExtra::grid.arrange(p1_new, p2_new)   # choose cluster = 3
+# choose numbers of cluster equal to 3
+clusters_new <- cutree(hc_ward_new, k = 3)
+# show each cluster size
+table(clusters_new)
+# visual 3 clusters
+fviz_cluster(list(data = data[,c(3:15)], cluster = clusters_new)) +
+  ggtitle("3 clusters without normalization")
+# calculate each cluster's centroids
+clusters_center_new <- aggregate(data[,c(3:15)], list(cluster = clusters_new), mean)
+clusters_center_new
+# transfer cluster into factor
+clusters_center_new$cluster <- factor(clusters_center_new$cluster)
+# use the pivot_longer to make variables together
+center_vari_plot <- clusters_center_new %>% select(cluster, calories, protein, fat, fiber, carbo, sugars, sodium, vitamins) %>% pivot_longer(-cluster, names_to = "variable", values_to = "value")
+# use ggplot to plot the figure
+q <- ggplot(center_vari_plot, aes(cluster, value, colour = variable)) + geom_point(size = 2)
+q + xlab("Cluster") +    # name x axis 
+    ylab("Variables Value") + # name y axis
+    ggtitle("Each Cluster Analysis") +   # name the figure title
+    theme(axis.title.x = element_text(color="aquamarine4", size=20), # change x axis name's color and size
+          axis.title.y = element_text(color="coral3", size=20),   # change y axis name's color and size
+          axis.text.x = element_text(size=15),   # change x axis number's size
+          axis.text.y = element_text(size=15),   # change y axis number's size
+          plot.title = element_text(color="cornflowerblue", size=20))   # change title's color and size
+# show healthy cereals cluster items
+rownames(data)[clusters_new == 2]
+```
+
+As we can see the 3 clusters centers in the figure, each ingredient is similar except for sodium. Cluster 1 & 3 have high sodium, but Cluster 2 has low sodium.
+
+We know that the healthy food usually have low sodium, so I choose Cluster 2 to be the "healthy cereals".
+
+The 10 items fullnames in Cluster 2 is : "100%_Natural_Bran", "Frosted_Mini_Wheats", "Maypo", "Puffed_Rice", "Puffed_Wheat", "Raisin_Squares", "Shredded_Wheat", "Shredded_Wheat_'n'Bran", "Shredded_Wheat_spoon_size" and "Strawberry_Fruit_Wheats".
+
+***
+
+### Differences between Hierarchical & K-Means
+
+The mainly differences between the Hierarchical & K-means clustering is when to determine the k(number of clusters) value.
+
+K-means is method of cluster analysis using the pre-specified No. of clusters and it requires advance knowledge of k. Hierarchical clustering is also a method of cluster analysis which builds a hierarchy of clusters without knowing k.
+
+In K Means clustering, since it start with random choice of clusters, the results produced by running the algorithm many times may differ. While in Hierarchical clustering, results are reproducible with differences k choices.
+
+Hierarchical clustering can build the dendrogram. While for the K-means, it can only plot each set of data into non-overlapping clusters.
+
+The advantages for hierarchical cluster : the dendrogram is more informative than K-means and easy to decide k value on by looking at the dendrogram.
+
+***
+
+### The END
+
+***
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
